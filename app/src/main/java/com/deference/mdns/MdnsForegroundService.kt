@@ -152,7 +152,7 @@ class MdnsForegroundService : Service() {
         val channel = NotificationChannel(
             CHANNEL_ID,
             "mDNS broadcasting",
-            NotificationManager.IMPORTANCE_LOW
+            NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = "Shows when the mDNS broadcaster is running"
             setShowBadge(false)
