@@ -49,35 +49,49 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
 			var showOpenSettingsWhenPermissionDenied by remember { mutableStateOf(false) }
-			val notificationPermissionLauncher =
+			var deniedPermissions by remember { mutableStateOf("") }
+
+			val permissionsLauncher =
 				rememberLauncherForActivityResult(
-					ActivityResultContracts.RequestPermission()
-				) {
-					/*
-					 * A foreground service may still start when notification
-					 * permission is denied, we show a dialog to grand permission
-					 * from settings.
-					 */
-					if (!it) showOpenSettingsWhenPermissionDenied = true
+					ActivityResultContracts.RequestMultiplePermissions()
+				) { permissions ->
+					val allGranted = permissions.entries.all { it.value }
+					if (!allGranted) {
+						deniedPermissions = permissions.filter { !it.value }.keys.joinToString(", ") {
+							it.substringAfterLast(".")
+						}
+						showOpenSettingsWhenPermissionDenied = true
+					}
+					// Start broadcasting regardless, the service will handle or fail gracefully
+					// if critical permissions are missing.
 					startBroadcasting()
 				}
-			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU){
-				LaunchedEffect(Unit) {
-					val needsNotificationPermission =
-						ContextCompat.checkSelfPermission(
-							context,
-							Manifest.permission.POST_NOTIFICATIONS
-						) != PackageManager.PERMISSION_GRANTED
-					if (needsNotificationPermission) {
-						notificationPermissionLauncher.launch(
-							Manifest.permission.POST_NOTIFICATIONS
-						)
-					} else {
-						startBroadcasting()
+
+			LaunchedEffect(Unit) {
+				val permissionsToRequest = mutableListOf<String>()
+				
+				if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+					if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+						permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+					}
+					if (ContextCompat.checkSelfPermission(context, Manifest.permission.NEARBY_WIFI_DEVICES) != PackageManager.PERMISSION_GRANTED) {
+						permissionsToRequest.add(Manifest.permission.NEARBY_WIFI_DEVICES)
 					}
 				}
-			}else{
-				startBroadcasting()
+				
+				// ACCESS_LOCAL_NETWORK is required for Android 17 (API 37)+
+				if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) {
+					val accessLocalNetwork = "android.permission.ACCESS_LOCAL_NETWORK"
+					if (ContextCompat.checkSelfPermission(context, accessLocalNetwork) != PackageManager.PERMISSION_GRANTED) {
+						permissionsToRequest.add(accessLocalNetwork)
+					}
+				}
+
+				if (permissionsToRequest.isNotEmpty()) {
+					permissionsLauncher.launch(permissionsToRequest.toTypedArray())
+				} else {
+					startBroadcasting()
+				}
 			}
 			
             MDNSTheme {
@@ -92,7 +106,7 @@ class MainActivity : ComponentActivity() {
 							)
 							this.startActivity(intent, null)
 						},
-						permissions = "Notification"
+						permissions = deniedPermissions
 					)
 				}
 				
